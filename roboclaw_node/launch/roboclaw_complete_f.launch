@@ -1,17 +1,16 @@
 <?xml version="1.0"?>
 <launch>
 
-    <arg name="dev_front" default="/dev/ttyACM2"/>
-    <arg name="dev_back" default="/dev/ttyACM1"/>
-    <arg name="baud" default="9600"/>
+    <arg name="dev_front" default="/dev/ttyACM0"/>
+    <arg name="dev_back" default="/dev/ttyACM0"/>
+    <arg name="baud" default="38400"/>
     <arg name="address_front" default="128"/>
     <arg name="address_back" default="129"/>
     <arg name="max_speed" default="1.7"/>
-    <!-- <arg name="ticks_per_meter" default="89478.2"/> -->
-    <arg name="ticks_per_meter" default="35818"/>
+    <arg name="ticks_per_meter" default="89478.2"/>
     <arg name="run_diag" default="true"/>
 
-    <node if="$(arg run_diag)" pkg="roboclaw_node" type="little_helper_node.py" name="roboclaw_node">
+    <node if="$(arg run_diag)" pkg="roboclaw_node" type="complete_node_f.py" name="roboclaw_node_f">
         <param name="~dev_front" value="$(arg dev_front)"/>
         <param name="~dev_back" value="$(arg dev_back)"/>
         <param name="~baud" value="$(arg baud)"/>
@@ -21,11 +20,11 @@
         <param name="~ticks_per_meter" value="$(arg ticks_per_meter)"/>
     </node>
 
-   <!--  <node pkg="diagnostic_aggregator" type="aggregator_node"
-          name="diagnostic_aggregator">
+    <node pkg="diagnostic_aggregator" type="aggregator_node"
+          name="diagnostic_aggregator_f">
         <rosparam command="load"
                   file="$(find roboclaw_node)/config/roboclaw_diag.yaml"/>
-    </node> -->
+    </node>
 
 </launch>
 

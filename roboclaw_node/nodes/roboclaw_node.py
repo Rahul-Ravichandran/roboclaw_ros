@@ -11,6 +11,11 @@ from nav_msgs.msg import Odometry
 
 __author__ = "bwbazemore@uga.edu (Brad Bazemore)"
 
+status1, enc1, crc1 = None, None, None
+status2, enc2, crc2 = None, None, None  
+
+avg_speed = 0.0
+# version = 0x80
 
 # TODO need to find some better was of handling OSerror 11 or preventing it, any ideas?
 
@@ -72,9 +77,9 @@ class EncoderOdom:
     def update_publish(self, enc_left, enc_right):
         # 2106 per 0.1 seconds is max speed, error in the 16th bit is 32768
         # TODO lets find a better way to deal with this error
-        if abs(enc_left - self.last_enc_left) > 20000:
+        if abs(enc_left - self.last_enc_left) > 700000:
             rospy.logerr("Ignoring left encoder jump: cur %d, last %d" % (enc_left, self.last_enc_left))
-        elif abs(enc_right - self.last_enc_right) > 20000:
+        elif abs(enc_right - self.last_enc_right) > 700000:
             rospy.logerr("Ignoring right encoder jump: cur %d, last %d" % (enc_right, self.last_enc_right))
         else:
             vel_x, vel_theta = self.update(enc_left, enc_right)
@@ -140,14 +145,16 @@ class Node:
         rospy.init_node("roboclaw_node")
         rospy.on_shutdown(self.shutdown)
         rospy.loginfo("Connecting to roboclaw")
-        dev_name = rospy.get_param("~dev", "/dev/ttyACM0")
-        baud_rate = int(rospy.get_param("~baud", "115200"))
+        dev_name = rospy.get_param("~dev", "/dev/ttyACM1")
+        baud_rate = int(rospy.get_param("~baud", "38400"))
+        
 
-        self.address = int(rospy.get_param("~address", "128"))
+        self.address = int(rospy.get_param("~address", "129"))
+        print(self.address)
         if self.address > 0x87 or self.address < 0x80:
             rospy.logfatal("Address out of range")
             rospy.signal_shutdown("Address out of range")
-
+        
         # TODO need someway to check if address is correct
         try:
             roboclaw.Open(dev_name, baud_rate)
@@ -155,6 +162,23 @@ class Node:
             rospy.logfatal("Could not connect to Roboclaw")
             rospy.logdebug(e)
             rospy.signal_shutdown("Could not connect to Roboclaw")
+
+        # version = roboclaw.ReadVersion(self.address)
+        # if version[0]==False:
+        #     print "GETVERSION Failed"
+        # else:
+        #     print repr(version[1])
+
+        # print roboclaw.ReadMinMaxMainVoltages(self.address)
+        # print roboclaw.ReadMinMaxLogicVoltages(self.address)
+        # print roboclaw.ReadM1MaxCurrent(self.address)
+        # print roboclaw.ReadM2MaxCurrent(self.address)
+        # print roboclaw.ReadTemp(self.address)
+        # print roboclaw.ReadTemp2(self.address)
+        # print roboclaw.ReadSpeedM1(self.address)
+        # print roboclaw.ReadSpeedM2(self.address)
+
+
 
         self.updater = diagnostic_updater.Updater()
         self.updater.setHardwareID("Roboclaw")
@@ -209,8 +233,7 @@ class Node:
                     rospy.logdebug(e)
 
             # TODO need find solution to the OSError11 looks like sync problem with serial
-            status1, enc1, crc1 = None, None, None
-            status2, enc2, crc2 = None, None, None
+            
 
             try:
                 status1, enc1, crc1 = roboclaw.ReadEncM1(self.address)
@@ -220,6 +243,8 @@ class Node:
                 rospy.logwarn("ReadEncM1 OSError: %d", e.errno)
                 rospy.logdebug(e)
 
+            
+
             try:
                 status2, enc2, crc2 = roboclaw.ReadEncM2(self.address)
             except ValueError:
@@ -228,6 +253,8 @@ class Node:
                 rospy.logwarn("ReadEncM2 OSError: %d", e.errno)
                 rospy.logdebug(e)
 
+            # print(status2)
+            # print(enc2)
             if ('enc1' in vars()) and ('enc2' in vars()):
                 rospy.logdebug(" Encoders %d %d" % (enc1, enc2))
                 self.encodm.update_publish(enc1, enc2)
@@ -236,7 +263,10 @@ class Node:
             r_time.sleep()
 
     def cmd_vel_callback(self, twist):
+        global avg_speed
         self.last_set_speed_time = rospy.get_rostime()
+
+
 
         linear_x = twist.linear.x
         if linear_x > self.MAX_SPEED:
@@ -246,19 +276,39 @@ class Node:
 
         vr = linear_x + twist.angular.z * self.BASE_WIDTH / 2.0  # m/s
         vl = linear_x - twist.angular.z * self.BASE_WIDTH / 2.0
+        # rospy.logwarn("linear_x:%d twist.angular.z: %d base_width %d", linear_x, twist.angular.z,self.BASE_WIDTH)
+        # rospy.logwarn("vr:%d vl: %d", vr, vl)
 
         vr_ticks = int(vr * self.TICKS_PER_METER)  # ticks/s
         vl_ticks = int(vl * self.TICKS_PER_METER)
 
-        rospy.logdebug("vr_ticks:%d vl_ticks: %d", vr_ticks, vl_ticks)
+        # rospy.logwarn("vr_ticks:%d vl_ticks: %d", vr_ticks, vl_ticks)
+
 
         try:
+            real_sp_m1 = ((linear_x/1.7)*63)+64
+            roboclaw.ForwardBackwardM1(self.address, int(real_sp_m1))
+            roboclaw.ForwardBackwardM2(self.address, int(real_sp_m1))
+            # speed1 = roboclaw.ReadEncM1(self.address)
+            # rospy.logwarn("speed M1")
+            
+
+
             # This is a hack way to keep a poorly tuned PID from making noise at speed 0
-            if vr_ticks is 0 and vl_ticks is 0:
-                roboclaw.ForwardM1(self.address, 0)
-                roboclaw.ForwardM2(self.address, 0)
-            else:
-                roboclaw.SpeedM1M2(self.address, vr_ticks, vl_ticks)
+            
+            # rospy.logwarn("speed M1")
+            # sm1 = roboclaw.ReadSpeedM1(self.address)
+            # rospy.logwarn(sm1)
+            # rospy.logwarn("speed M2")
+            # sm2 = roboclaw.ReadSpeedM2(self.address)
+            # rospy.logwarn(sm2)
+            # if vr_ticks is 0 and vl_ticks is 0:
+            #     roboclaw.ForwardM1(self.address, 0)
+            #     roboclaw.ForwardM2(self.address, 0)
+            #     rospy.logwarn("forward")
+            # else:
+            #     roboclaw.SpeedM1M2(self.address, vr_ticks, vl_ticks)
+            #     rospy.logwarn("speed")
         except OSError as e:
             rospy.logwarn("SpeedM1M2 OSError: %d", e.errno)
             rospy.logdebug(e)
@@ -301,8 +351,10 @@ class Node:
 
 if __name__ == "__main__":
     try:
+        print("HIiiiiiiiiiiiiii")
         node = Node()
         node.run()
     except rospy.ROSInterruptException:
+        print("HIiiiiiiiiiiiiii")
         pass
     rospy.loginfo("Exiting")

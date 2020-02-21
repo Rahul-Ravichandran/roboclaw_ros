@@ -781,7 +781,10 @@ def ReadVersion(address):
         str = ""
         passed = True
         for i in range(0, 48):
+            port.flushInput()
+            _sendcommand(address, Cmd.GETVERSION)
             data = port.read(1)
+            
             if len(data):
                 val = ord(data)
                 crc_update(val)

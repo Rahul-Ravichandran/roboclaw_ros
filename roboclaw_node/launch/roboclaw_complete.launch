@@ -2,7 +2,7 @@
 <launch>
 
     <arg name="dev_front" default="/dev/ttyACM2"/>
-    <arg name="dev_back" default="/dev/ttyACM1"/>
+    <arg name="dev_back" default="/dev/ttyACM0"/>
     <arg name="baud" default="9600"/>
     <arg name="address_front" default="128"/>
     <arg name="address_back" default="129"/>
@@ -11,7 +11,7 @@
     <arg name="ticks_per_meter" default="35818"/>
     <arg name="run_diag" default="true"/>
 
-    <node if="$(arg run_diag)" pkg="roboclaw_node" type="little_helper_node.py" name="roboclaw_node">
+    <node if="$(arg run_diag)" pkg="roboclaw_node" type="little_helper_complete_node.py" name="roboclaw_node">
         <param name="~dev_front" value="$(arg dev_front)"/>
         <param name="~dev_back" value="$(arg dev_back)"/>
         <param name="~baud" value="$(arg baud)"/>
